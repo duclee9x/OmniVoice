@@ -61,6 +61,17 @@ def get_best_device():
     return "cpu", 1
 
 
+def get_best_dtype(device: str):
+    """Return the best dtype for the given device.
+
+    MPS does not support bfloat16 and float16 may lose precision when
+    converting from bf16 weights, so we use float32 on MPS and CPU.
+    """
+    if device.startswith("cuda"):
+        return torch.float16
+    return torch.float32
+
+
 worker_model = None
 SAMPLING_RATE = 24000
 
@@ -70,7 +81,7 @@ def get_parser():
     parser.add_argument(
         "--model",
         type=str,
-        default="k2-fsa/OmniVoice",
+        default="drbaph/OmniVoice-bf16",
         help="Path to the model checkpoint (local dir or HF repo id). "
         "Audio tokenizer is expected at <checkpoint>/audio_tokenizer/.",
     )
@@ -228,10 +239,12 @@ def process_init(rank_queue, model_checkpoint, warmup=0):
 
     logging.info(f"Initializing worker on device: {worker_device}")
 
+    worker_dtype = get_best_dtype(worker_device)
+    logging.info(f"Loading model with dtype={worker_dtype}")
     worker_model = OmniVoice.from_pretrained(
         model_checkpoint,
         device_map=worker_device,
-        dtype=torch.float16,
+        dtype=worker_dtype,
     )
 
     if warmup > 0:

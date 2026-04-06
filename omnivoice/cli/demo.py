@@ -44,6 +44,17 @@ def get_best_device():
     return "cpu"
 
 
+def get_best_dtype(device: str):
+    """Return the best dtype for the given device.
+
+    MPS does not support bfloat16 and float16 may lose precision when
+    converting from bf16 weights, so we use float32 on MPS and CPU.
+    """
+    if device.startswith("cuda") or device.startswith("mps"):
+        return torch.float16
+    return torch.float32
+
+
 # ---------------------------------------------------------------------------
 # Language list — all 600+ supported languages
 # ---------------------------------------------------------------------------
@@ -118,7 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default="k2-fsa/OmniVoice",
+        default="drbaph/OmniVoice-bf16",
         help="Model checkpoint path or HuggingFace repo id.",
     )
     parser.add_argument(
@@ -504,16 +515,17 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     device = args.device or get_best_device()
+    dtype = get_best_dtype(device)
 
     checkpoint = args.model
     if not checkpoint:
         parser.print_help()
         return 0
-    logging.info(f"Loading model from {checkpoint}, device={device} ...")
+    logging.info(f"Loading model from {checkpoint}, device={device}, dtype={dtype} ...")
     model = OmniVoice.from_pretrained(
         checkpoint,
         device_map=device,
-        dtype=torch.float16,
+        dtype=dtype,
         load_asr=True,
     )
     print("Model loaded.")
