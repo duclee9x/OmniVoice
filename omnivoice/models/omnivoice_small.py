@@ -213,6 +213,10 @@ class OmniVoiceSmall(OmniVoice):
             input_ids * audio_mask.unsqueeze(1)
         ) + self.codebook_layer_offsets.view(1, -1, 1)
 
+        # Defensive: clamp to valid embedding range to prevent index OOB
+        max_idx = self.config.num_audio_codebook * self.config.audio_vocab_size - 1
+        shifted_ids = shifted_ids.clamp(0, max_idx)
+
         # Embed at teacher_dim, sum across codebook layers (same as parent)
         audio_embeds = self.audio_embeddings(shifted_ids).sum(dim=1)  # [B, S, 1024]
 

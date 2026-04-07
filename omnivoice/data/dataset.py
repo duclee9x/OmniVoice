@@ -231,7 +231,7 @@ class SampleDecoder:
 
         audio = torch.empty(0)
         if "npy" in sample:
-            audio_tokens = torch.from_numpy(sample["npy"])
+            audio_tokens = torch.from_numpy(sample["npy"]).long()
             return_dict["audio_tokens"] = audio_tokens
         else:
             for ext in self.audio_format:

@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PHASE_A_STEPS = 50_000   # Backbone-only distillation
-CFG_ALPHA = 1.5           # CFG scale for teacher hidden states
+CFG_ALPHA = 0.0           # CFG scale for teacher hidden states (0 = no CFG, saves VRAM)
 DISTILL_WEIGHT = 1.0      # Weight of MSE distillation loss
 RECON_WEIGHT = 0.1         # Weight of CE reconstruction loss (Phase B)
 
