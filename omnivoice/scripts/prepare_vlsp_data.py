@@ -1,63 +1,45 @@
-# prepare_vlsp_data.py
-# Chạy: python prepare_vlsp_data.py
-# pip install datasets soundfile tqdm
-
-from datasets import load_dataset
-import soundfile as sf
-import json, os
-from tqdm import tqdm
+from datasets import load_from_disk
+import soundfile as sf, json, os
 from pathlib import Path
+from tqdm import tqdm
 
-OUTPUT_AUDIO_DIR = "data/audio/vlsp2020"
-OUTPUT_TRAIN_JSONL = "data/train.jsonl"
-OUTPUT_DEV_JSONL   = "data/dev.jsonl"
-DEV_RATIO = 0.02  # 2% làm dev set (~1100 mẫu)
+# Đường dẫn đến folder chứa các file .arrow trên Drive
+# (folder chứa data-00000-of-00024.arrow, state.json, dataset_info.json)
+ARROW_DIR     = "/content/drive/MyDrive/dataset/train"
 
-Path(OUTPUT_AUDIO_DIR).mkdir(parents=True, exist_ok=True)
+# Output: wav ghi vào disk Colab (nhanh), JSONL ghi vào Drive (an toàn)
+OUTPUT_AUDIO  = "/content/drive/MyDrive/dataset"          # disk Colab ~80GB
+OUTPUT_TRAIN  = "/content/drive/MyDrive/dataset/train.jsonl"
+OUTPUT_DEV    = "/content/drive/MyDrive/dataset/dev.jsonl"
+DEV_SIZE      = 1000
 
-print("Loading dataset (streaming)...")
-dataset = load_dataset(
-    "doof-ferb/vlsp2020_vinai_100h",
-    split="train",
-    streaming=False  # tải toàn bộ về disk (~11.6GB)
-)
+Path(OUTPUT_AUDIO).mkdir(parents=True, exist_ok=True)
 
-total = len(dataset)
-dev_count = int(total * DEV_RATIO)
-train_records, dev_records = [], []
+print("Loading dataset from Drive (arrow format)...")
+dataset = load_from_disk(ARROW_DIR)  # đọc thẳng, không cần re-download
+print(f"Total samples: {len(dataset)}")
 
-print(f"Processing {total} samples...")
+train_f = open(OUTPUT_TRAIN, "w", encoding="utf-8")
+dev_f   = open(OUTPUT_DEV,   "w", encoding="utf-8")
+
 for i, sample in enumerate(tqdm(dataset)):
     audio_array = sample["audio"]["array"]
-    sample_rate  = sample["audio"]["sampling_rate"]
-    text         = sample["transcription"].strip()
-    utt_id       = f"vlsp_{i:06d}"
-    wav_path     = os.path.abspath(f"{OUTPUT_AUDIO_DIR}/{utt_id}.wav")
+    sample_rate = sample["audio"]["sampling_rate"]
+    text        = sample["transcription"].strip()
+    utt_id      = f"vlsp_{i:06d}"
+    wav_path    = f"{OUTPUT_AUDIO}/{utt_id}.wav"
 
-    # Lưu audio ra file .wav
     sf.write(wav_path, audio_array, sample_rate)
 
-    record = {
+    record = json.dumps({
         "id": utt_id,
         "audio_path": wav_path,
         "text": text,
         "language_id": "vi"
-    }
+    }, ensure_ascii=False)
 
-    if i < dev_count:
-        dev_records.append(record)
-    else:
-        train_records.append(record)
+    (dev_f if i < DEV_SIZE else train_f).write(record + "\n")
 
-# Ghi JSONL
-with open(OUTPUT_TRAIN_JSONL, "w", encoding="utf-8") as f:
-    for r in train_records:
-        f.write(json.dumps(r, ensure_ascii=False) + "\n")
-
-with open(OUTPUT_DEV_JSONL, "w", encoding="utf-8") as f:
-    for r in dev_records:
-        f.write(json.dumps(r, ensure_ascii=False) + "\n")
-
-print(f"\nDone!")
-print(f"Train: {len(train_records)} samples → {OUTPUT_TRAIN_JSONL}")
-print(f"Dev:   {len(dev_records)} samples  → {OUTPUT_DEV_JSONL}")
+train_f.close()
+dev_f.close()
+print(f"Done! Train: {len(dataset)-DEV_SIZE}, Dev: {DEV_SIZE}")
