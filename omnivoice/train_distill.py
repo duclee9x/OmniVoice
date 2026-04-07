@@ -241,8 +241,10 @@ class DistillationTrainer:
         H_student_proj = student_output.hidden_states_projected  # [B, S, 1024]
 
         # ----- Distillation loss: MSE on hidden states -----
-        # Only compute on valid (non-padding) positions
-        loss_distill = F.mse_loss(H_student_proj, H_teacher_cfg.detach())
+        # Cast teacher hidden states to match student dtype (teacher=fp16, student=fp32)
+        loss_distill = F.mse_loss(
+            H_student_proj, H_teacher_cfg.detach().to(H_student_proj.dtype)
+        )
 
         metrics = {"distill_loss": loss_distill.item()}
 
