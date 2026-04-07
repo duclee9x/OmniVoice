@@ -239,15 +239,23 @@ class OmniVoiceSmall(OmniVoice):
         inputs_embeds = self._prepare_embed_inputs(input_ids, audio_mask)
 
         if attention_mask is None and document_ids is not None:
-            from torch.nn.attention.flex_attention import create_block_mask
-            from omnivoice.models.omnivoice import _get_packed_mask
+            # Build a standard 4D causal mask from document_ids for packed sequences.
+            # This is compatible with ALL attention backends (SDPA, eager, flash).
+            # BlockMask from flex_attention is NOT compatible with SDPA.
+            seq_len = input_ids.size(-1)
+            device = inputs_embeds.device
+            doc = document_ids[0].to(device)  # [S]
 
-            attention_mask = create_block_mask(
-                _get_packed_mask(document_ids[0].to(inputs_embeds.device)),
-                B=None, H=None,
-                Q_LEN=input_ids.size(-1), KV_LEN=input_ids.size(-1),
-                _compile=True, device=inputs_embeds.device,
-            )
+            # Causal mask: position i can attend to position j if j <= i
+            causal = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool, device=device))
+
+            # Document mask: position i can attend to position j only if same document
+            same_doc = doc.unsqueeze(0) == doc.unsqueeze(1)  # [S, S]
+
+            # Combined: causal AND same document -> [1, 1, S, S] for broadcast
+            mask_2d = (causal & same_doc)
+            # Convert to float mask for SDPA: 0.0 = attend, -inf = block
+            attention_mask = mask_2d.float().masked_fill(~mask_2d, float("-inf")).unsqueeze(0).unsqueeze(0)
 
         llm_outputs = self.llm(
             inputs_embeds=inputs_embeds,
