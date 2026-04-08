@@ -194,7 +194,8 @@ class DistillationTrainer:
 
     def rebuild_optimizer_for_phase_b(self):
         """Rebuild optimizer when transitioning to Phase B (more params trainable)."""
-        trainable = [p for p in self.student.parameters() if p.requires_grad]
+        unwrapped = self.student.module if hasattr(self.student, "module") else self.student
+        trainable = [p for p in unwrapped.parameters() if p.requires_grad]
         self.optimizer = torch.optim.AdamW(
             trainable,
             lr=self.learning_rate * 0.5,  # Lower LR for phase B
@@ -285,9 +286,11 @@ class DistillationTrainer:
     def _enter_phase_b(self):
         """Transition from Phase A to Phase B."""
         self.phase = "B"
-        self.student.unfreeze_shared_weights()
+        # Unwrap DDP to access underlying model methods
+        unwrapped = self.student.module if hasattr(self.student, "module") else self.student
+        unwrapped.unfreeze_shared_weights()
         self.rebuild_optimizer_for_phase_b()
-        trainable = self.student.count_trainable_params() / 1e6
+        trainable = unwrapped.count_trainable_params() / 1e6
         logger.info(
             "[Step %d] Entering Phase B: joint fine-tuning, trainable=%.1fM",
             self.global_step,
@@ -427,7 +430,7 @@ class DistillationTrainer:
                         self.tokenizer,
                         self.output_dir,
                         self.global_step,
-                        keep_last_n=-1,
+                        keep_last_n=5,
                     )
 
         # Final save
@@ -437,7 +440,7 @@ class DistillationTrainer:
             self.tokenizer,
             self.output_dir,
             self.global_step,
-            keep_last_n=-1,
+            keep_last_n=5,
         )
         train_logger.close()
         accelerator.end_training()
